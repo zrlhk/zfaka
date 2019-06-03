@@ -12,39 +12,50 @@ class UpgradeController extends AdminBasicController
 	public function init()
     {
         parent::init();
-		$this->all_version = ['1.0.0','1.0.2','1.0.3','1.0.4','1.0.5','1.0.6'];
+		$this->all_version = ['1.0.0','1.0.2','1.0.3','1.0.4','1.0.5','1.0.6','1.0.7','1.0.8','1.0.9','1.1.0','1.1.1','1.1.2','1.1.3','1.1.4','1.1.5','1.1.6','1.1.7','1.1.8','1.1.9','1.2.0','1.2.1','1.2.2','1.2.3','1.2.4','1.2.5','1.2.6','1.2.7','1.2.8','1.2.9','1.3.0','1.3.1','1.3.3','1.3.4','1.3.5','1.3.6','1.3.7','1.3.8','1.3.9','1.4.0','1.4.1','1.4.2','1.4.3'];
     }
 
     public function indexAction()
     {
         if ($this->AdminUser==FALSE AND empty($this->AdminUser)) {
-            $this->redirect("/admin/login");
+            $this->redirect('/'.ADMIN_DIR."/login");
             return FALSE;
         }
 		if(file_exists(INSTALL_LOCK)){
+			//安装版本version,<= 当前待更新版本VERSION <=远程最新版本update_version
 			$version = @file_get_contents(INSTALL_LOCK);
+			$version = str_replace(array("\r","\n","\t"), "", $version);
 			$version = strlen(trim($version))>0?$version:'1.0.0';
+
 			if(version_compare(trim($version), trim(VERSION), '<' )){
 				$data = array();
 				$update_version = $this->_getUpdateVersion($version);
 				if($update_version==''){
-					$data['update_version'] = $update_version!=''?$update_version:'未知的版本';
+					$data['update_version'] = '未知的版本';
 					$data['upgrade_desc'] = "抱歉,我表示很难理解你为什么能看到这条信息";
 					$data['upgrade_sql'] = '';
+					$data['button'] = false;
 				}else{
-					$data['update_version'] = $update_version;
-					$desc = @file_get_contents(INSTALL_PATH.'/'.$update_version.'/upgrade.txt');
-					$data['upgrade_desc'] = $desc;
-					if(file_exists(INSTALL_PATH.'/'.$update_version.'/upgrade.sql')){
-						$data['upgrade_sql'] = INSTALL_PATH.'/'.$update_version.'/upgrade.sql';
+					if(version_compare(trim($update_version),trim(VERSION),  '<=' )){
+						$data['update_version'] = $update_version;
+						$desc = @file_get_contents(INSTALL_PATH.'/'.$update_version.'/upgrade.txt');
+						$data['upgrade_desc'] = $desc;
+						if(file_exists(INSTALL_PATH.'/'.$update_version.'/upgrade.sql')){
+							$data['upgrade_sql'] = INSTALL_PATH.'/'.$update_version.'/upgrade.sql';
+						}else{
+							$data['upgrade_sql'] = '';
+						}
+						$data['button'] = true;
 					}else{
-						$data['upgrade_sql'] = '';
+						$data['update_version'] = VERSION;
+						$data['button'] = false;
+						$data['upgrade_desc'] = "抱歉,我表示很难理解你为什么能看到这条信息";
 					}
 				}
 				$data['version'] = $version;
 				$this->getView()->assign($data);
 			}else{
-				$this->redirect("/admin/");
+				$this->redirect('/'.ADMIN_DIR);
 				return FALSE;
 			}
 		}else{
@@ -65,6 +76,7 @@ class UpgradeController extends AdminBasicController
 		if($method AND $method=='upgrade'){
             try {
 				$version = @file_get_contents(INSTALL_LOCK);
+				$version = str_replace(array("\r","\n","\t"), "", $version);
 				$version = strlen(trim($version))>0?$version:'1.0.0';
 				if(version_compare(trim($version), trim(VERSION), '<' )){
 					$update_version = $this->_getUpdateVersion($version);
@@ -102,6 +114,10 @@ class UpgradeController extends AdminBasicController
 				if (!$result){
 					$data = array('code' => 1004, 'msg' =>"无法写入安装锁定到".INSTALL_LOCK."文件，请检查是否有写权限");
 				}
+				//20190319，这里添加一个延时，避免sql操作时间过长导致异常
+				sleep(10);
+				//更新配置缓存 
+				$m_config->getConfig(1);
 				$data = array('code' => 1, 'msg' =>"SUCCESS");
             } catch (\Exception $e) {
 				$data = array('code' => 1001, 'msg' =>"失败:".$e->getMessage());
@@ -113,13 +129,15 @@ class UpgradeController extends AdminBasicController
 	}
 	
 	//获取下一版本号
-	private function _getUpdateVersion($version){
-		$offset=array_search($version,$this->all_version);
-		$k = $offset+1;
-		if(isset($this->all_version[$k])){
-			return $this->all_version[$k];
-		}else{
-			return '';
+	private function _getUpdateVersion($version)
+	{
+		$offset = array_search($version,$this->all_version);
+		if($offset>=0){
+			$k = $offset+1;
+			if(isset($this->all_version[$k])){
+				return $this->all_version[$k];
+			}
 		}
+		return end($this->all_version);
 	}
 }

@@ -6,7 +6,7 @@
  * Date:20150909
  */
 
-class ForgetpwdController extends PcBasicController
+class ForgetpwdController extends MemberBasicController
 {
 	private $m_user;
 	private $m_email_code;
@@ -26,12 +26,20 @@ class ForgetpwdController extends PcBasicController
             $this->redirect("/member/");
             return FALSE;
         }
+		if(isset($this->config['forgetpwdswitch']) AND $this->config['forgetpwdswitch']<1){
+            $this->redirect("/product/");
+            return FALSE;
+		}
 		$data['title'] = "找回密码";
 		$this->getView()->assign($data);
     }
 	
 	public function resetAction()
 	{
+		if(isset($this->config['forgetpwdswitch']) AND $this->config['forgetpwdswitch']<1){
+            $this->redirect("/product/");
+            return FALSE;
+		}
         $key = $this->get('key', false);
 		$data = array();
         if (false != $key) {
@@ -41,6 +49,9 @@ class ForgetpwdController extends PcBasicController
                 $code = $key_array[0];
                 $id = (int)$key_array[1];
 				$email = $key_array[2];
+				
+				$code_string = new \Safe\MyString($code);
+				$code = $code_string->trimall()->qufuhao2()->getValue();
 				
                 if (false != $code AND is_numeric($id) AND $id > 0 AND isEmail($email)) {
                     //从数据库中读取
@@ -72,9 +83,13 @@ class ForgetpwdController extends PcBasicController
 	//找回密码 2.重设
 	public function resetajaxAction()
 	{
-		$email = $this->getPost('email',false);
-		$code = $this->getPost('code',false);
-		$password = $this->getPost('password',false);
+		if(isset($this->config['forgetpwdswitch']) AND $this->config['forgetpwdswitch']<1){
+			$data = array('code' => 1000, 'msg' => '本系统关闭密码重置功能');
+			Helper::response($data);
+		}
+		$email = $this->getPost('email');
+		$code = $this->getPost('code');
+		$password = $this->getPost('password');
 		$csrf_token = $this->getPost('csrf_token', false);
 		
 		$data = array();
@@ -107,16 +122,34 @@ class ForgetpwdController extends PcBasicController
 	//找回密码 1.验证邮箱
 	public function ajaxAction()
 	{
-		$email    = $this->getPost('email',false);
-		$vercode = $this->getPost('vercode',false);
+		if(isset($this->config['forgetpwdswitch']) AND $this->config['forgetpwdswitch']<1){
+			$data = array('code' => 1000, 'msg' => '本系统关闭密码重置功能');
+			Helper::response($data);
+		}
+		$email    = $this->getPost('email');
 		$csrf_token = $this->getPost('csrf_token', false);
 		
 		$data = array();
 		
-		if($email AND $vercode AND $csrf_token){
+		if($email AND $csrf_token){
 			if ($this->VerifyCsrfToken($csrf_token)) {
 				if(isEmail($email)){
-					if(strtolower($this->getSession('forgetpwdCaptcha')) ==strtolower($vercode)){
+					if(isset($this->config['yzmswitch']) AND $this->config['yzmswitch']>0){
+						$vercode = $this->getPost('vercode');
+						if($vercode){
+							if(strtolower($this->getSession('forgetpwdCaptcha')) == strtolower($vercode)){
+								$this->unsetSession('forgetpwdCaptcha');
+							}else{
+								$data=array('code'=>1004,'msg'=>'图形验证码错误');
+								Helper::response($data);
+							}
+						}else{
+							$data = array('code' => 1000, 'msg' => '丢失参数');
+							Helper::response($data);
+						}
+					}	
+					
+
 						$checkEmailUser = $this->m_user->checkEmail($email);
 						if(!empty($checkEmailUser)){
 								//1.查询该用户当天找回密码次数
@@ -144,7 +177,7 @@ class ForgetpwdController extends PcBasicController
 									try {
 										$key=base64_encode("{$m['code']}-{$m['id']}-{$email}");
 										$str = "key={$key}";
-										$url = siteUrl($this->config['web_url'], "/member/forgetpwd/reset", $str);
+										$url = siteUrl($this->config['weburl'], "/member/forgetpwd/reset", $str);
 										$content = '用户' . $email . ',请点击此链接重置密码<a href="' . $url . '">' . $url . '</a>';
 										$emainConfig = $this->m_email->getConfig();
 										$config=array();
@@ -178,9 +211,6 @@ class ForgetpwdController extends PcBasicController
 						}else{
 							$data = array('code' => 1002, 'msg' =>'邮箱不存在');
 						}
-					}else{
-						 $data = array('code' => 1003, 'msg' => '验证码错误!');
-					}
 				} else {
 					$data = array('code' => 1001, 'msg' => '页面超时，请刷新页面后重试!');
 				}

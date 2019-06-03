@@ -13,6 +13,7 @@ layui.define(['layer', 'table', 'form'], function(exports){
 			{field: 'id', title: 'ID', width:80},
 			{field: 'name', title: '分类名', minWidth:160},
 			{field: 'active', title: '是否激活', width:100, templet: '#active',align:'center'},
+			{field: 'sort_num', title: '排序', width:80,align:'center'},
 			{field: 'opt', title: '操作', width:160, templet: '#opt',align:'center'}
 		]]
 	});
@@ -32,7 +33,7 @@ layui.define(['layer', 'table', 'form'], function(exports){
 			if (res.code == '1') {
 				layer.open({
 					title: '提示',
-					content: '修改成功',
+					content: '成功',
 					btn: ['确定'],
 					yes: function(index, layero){
 					    location.reload();

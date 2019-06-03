@@ -57,7 +57,7 @@ class ProductsController extends AdminBasicController
             }
 			
             $limits = "{$pagenum},{$limit}";
-			$sql = "SELECT p1.id,p1.name,p1.price,p1.qty,p1.auto,p1.active,p1.stockcontrol,p2.name as typename FROM `t_products` as p1 left join `t_products_type` as p2 on p1.typeid = p2.id WHERE p1.isdelete=0 Order by p1.id desc LIMIT {$limits}";
+			$sql = "SELECT p1.id,p1.name,p1.price,p1.qty,p1.auto,p1.active,p1.stockcontrol,p1.sort_num,p2.name as typename FROM `t_products` as p1 left join `t_products_type` as p2 on p1.typeid = p2.id WHERE p1.isdelete=0 Order by p1.id desc LIMIT {$limits}";
 			$items=$this->m_products->Query($sql);
             if (empty($items)) {
                 $data = array('code'=>1002,'count'=>0,'data'=>array(),'msg'=>'无数据');
@@ -82,7 +82,7 @@ class ProductsController extends AdminBasicController
 			$product=$this->m_products->SelectByID('',$id);
 			$data['product'] = $product;
 			
-			$productstype=$this->m_products_type->Where(array('isdelete'=>0))->Order(array('id'=>'DESC'))->Select();
+			$productstype=$this->m_products_type->Where(array('isdelete'=>0))->Order(array('sort_num'=>'DESC'))->Select();
 			$data['productstype'] = $productstype;
 			
 			$this->getView()->assign($data);
@@ -92,6 +92,87 @@ class ProductsController extends AdminBasicController
 		}
     }
 	
+	//图片管理
+    public function imgurlAction()
+    {
+        if ($this->AdminUser==FALSE AND empty($this->AdminUser)) {
+            $this->redirect('/'.ADMIN_DIR."/login");
+            return FALSE;
+        }
+		$id = $this->get('id');
+		if($id AND $id>0){
+			$data = array();
+			$product=$this->m_products->SelectByID('',$id);
+			$data['product'] = $product;
+			$this->getView()->assign($data);
+		}else{
+            $this->redirect('/'.ADMIN_DIR."/products");
+            return FALSE;
+		}
+    }
+	
+	public function imgurlajaxAction(){
+        if ($this->AdminUser==FALSE AND empty($this->AdminUser)) {
+            $data = array('code' => 1000, 'msg' => '请登录');
+			Helper::response($data);
+        }
+		if(is_array($_FILES) AND !empty($_FILES) AND isset($_FILES['file'])){
+			if(isset($_FILES["file"]["error"]) AND $_FILES["file"]["error"]){
+				$data = array('code' => 1000, 'msg' =>$_FILES["file"]["error"]);
+				Helper::response($data); 
+			}else{
+				$pid = $this->getPost('pid');
+				if(is_numeric($pid) AND $pid>0){
+						try{
+							$ext = pathinfo($_FILES['file']['name']);
+							$ext = strtolower($ext['extension']);
+							$tempFile = $_FILES['file']['tmp_name'];
+							$targetPath  = UPLOAD_PATH.'/'.CUR_DATE;
+							if( !is_dir($targetPath) ){
+								mkdir($targetPath,0777,true);
+							}
+							$filename=date("His");
+							$new_file_name = $filename.'.'.$ext;
+							$targetFile = $targetPath .'/'. $new_file_name;
+							move_uploaded_file($tempFile,$targetFile);
+							if( !file_exists( $targetFile ) ){
+								$data = array('code' => 1000, 'msg' => '上传失败');
+							} elseif( !$imginfo=getimagesize($targetFile) ) {
+								$data = array('code' => 1000, 'msg' => '上传失败,文件不存在 ');
+							} else {
+								if($imginfo[0]!=$imginfo[1]){
+									//裁减图片
+									if($imginfo[0]>$imginfo[1]){
+										$w = $imginfo[1];
+									}else{
+										$w = $imginfo[0];
+									}
+									\Yaf\Loader::import(FUNC_PATH.'/F_Img.php');
+									image_center_crop($targetFile, $w, $w, $targetFile);
+								}
+								
+								$img = '/res/upload/'.CUR_DATE.'/'.$new_file_name;
+								$data['code'] = 1;
+								$data['img'] =$img ;
+								//保存到数据库
+								$m=array('imgurl'=>$img);
+								$this->m_products->UpdateByID($m,$pid);
+								$data = array('code' => 1, 'msg' => 'success');
+							}
+						}catch(\Exception $e) {
+							$data = array('code' => 1002, 'msg' => $e->getMessage(),'data'=>array());
+						}
+				}else{
+					$data = array('code' => 1001, 'msg' => '请选择商品','data'=>array());
+				}
+			}
+		}else{
+			$data = array('code' => 1000, 'msg' => '上传内容为空,请重新上传','data'=>array());
+		}
+		Helper::response($data);
+	}
+	
+	
     public function addAction()
     {
         if ($this->AdminUser==FALSE AND empty($this->AdminUser)) {
@@ -100,7 +181,7 @@ class ProductsController extends AdminBasicController
         }
 
 		$data = array();
-		$productstype=$this->m_products_type->Where(array('isdelete'=>0))->Order(array('id'=>'DESC'))->Select();
+		$productstype=$this->m_products_type->Where(array('isdelete'=>0))->Order(array('sort_num'=>'DESC'))->Select();
 		$data['productstype'] = $productstype;
 		$this->getView()->assign($data);
     }
@@ -110,11 +191,17 @@ class ProductsController extends AdminBasicController
 		$id = $this->getPost('id',false);
 		$typeid = $this->getPost('typeid',false);
 		$name = $this->getPost('name',false);
+		$password = $this->getPost('password',false);
 		$description = $this->getPost('description',false);
 		$stockcontrol = $this->getPost('stockcontrol',false);
-		$qty = $this->getPost('qty',false);
-		$price = $this->getPost('price',false);
+		$qty = $this->getPost('qty');
+		$qty_switch = $this->getPost('qty_switch');
+		$qty_virtual = $this->getPost('qty_virtual');
+		$qty_sell = $this->getPost('qty_sell');
+		$price = $this->getPost('price');
+		$price_ori = $this->getPost('price_ori');
 		$auto = $this->getPost('auto',false);
+		$addons = $this->getPost('addons',false);
 		$active = $this->getPost('active',false);
 		$sort_num = $this->getPost('sort_num',false);
 		$csrf_token = $this->getPost('csrf_token', false);
@@ -128,15 +215,26 @@ class ProductsController extends AdminBasicController
 		
 		if($method AND $typeid AND $name AND $description AND is_numeric($stockcontrol) AND is_numeric($qty) AND is_numeric($price) AND is_numeric($auto) AND is_numeric($active) AND is_numeric($sort_num) AND $csrf_token){
 			if ($this->VerifyCsrfToken($csrf_token)) {
+				if($price<0.01){
+					$data = array('code' => 1000, 'msg' => '价格设置错误');
+					Helper::response($data);
+				}
+				
 				$description = str_replace(array("\r","\n","\t"), "", $description);
-				$m=array(
+				$m = array(
 					'typeid'=>$typeid,
 					'name'=>$name,
+					'password'=>$password,
 					'description'=>htmlspecialchars($description),
 					'stockcontrol'=>$stockcontrol,
 					'qty'=>$qty,
+					'qty_switch'=>$qty_switch,
+					'qty_virtual'=>$qty_virtual,
+					'qty_sell'=>$qty_sell,
 					'price'=>$price,
+					'price_ori'=>$price_ori,
 					'auto'=>$auto,
+					'addons'=>$addons,
 					'active'=>$active,
 					'sort_num'=>$sort_num,
 				);
@@ -162,6 +260,7 @@ class ProductsController extends AdminBasicController
 						$m['qty'] = 0;
 					}
 					$m['addtime'] = time();
+					$m['imgurl'] = "";
 					$u = $this->m_products->Insert($m);
 					if($u){
 						$data = array('code' => 1, 'msg' => '新增成功');
@@ -225,7 +324,7 @@ class ProductsController extends AdminBasicController
 				//检查是否存在可用的卡密
 				$qty = $this->m_products_card->Where(array('pid'=>$id,'active'=>0,'isdelete'=>0))->Total();
 				if($qty>0){
-					$data = array('code' => 1004, 'msg' => '存在可用卡密，请导出', 'data' => '');
+					$data = array('code' => 1004, 'msg' => '存在可用卡密，请先导出并删除卡密', 'data' => '');
 				}else{
 					$where = 'active=0';//只有未激活的才可以删除
 					$delete = $this->m_products->Where($where)->UpdateByID(array('isdelete'=>1),$id);
@@ -243,4 +342,27 @@ class ProductsController extends AdminBasicController
         }
        Helper::response($data);
     }
+	
+    public function getlistbytidAction()
+    {
+		$tid = $this->getPost('tid');
+		$csrf_token = $this->getPost('csrf_token', false);
+		
+		if($tid AND $csrf_token){
+			if ($this->VerifyCsrfToken($csrf_token)) {
+				$data = array();
+				$order = array('sort_num' => 'DESC');
+				$field = array('id', 'name');
+				$products = $this->m_products->Field($field)->Where(array('typeid'=>$tid,'active'=>1,'isdelete'=>0))->Order($order)->Select();
+				$data['products'] = $products;
+				$result = array('code' => 1, 'msg' => 'success','data'=>$data);
+			} else {
+                $result = array('code' => 1001, 'msg' => '页面超时，请刷新页面后重试!');
+            }
+		}else{
+			$result = array('code' => 1000, 'msg' => '参数错误');
+		}
+        Helper::response($result);
+    }
+	
 }

@@ -9,9 +9,13 @@
 class IndexController extends AdminBasicController
 {
 	private $github_url = "https://github.com/zlkbdotnet/zfaka/releases";
+	private $remote_version = '';
+	private $m_order;
+	
     public function init()
     {
         parent::init();
+		$this->m_order = $this->load('order');
     }
 
     public function indexAction()
@@ -22,12 +26,19 @@ class IndexController extends AdminBasicController
 				return FALSE;
 			}else{
 				$version = @file_get_contents(INSTALL_LOCK);
+				$version = str_replace(array("\r","\n","\t"), "", $version);
 				$version = strlen(trim($version))>0?$version:'1.0.0';
 				if(version_compare(trim($version), trim(VERSION), '<' )){
 					$this->redirect("/install/upgrade");
 					return FALSE;
 				}else{
+					//这里要查询待处理的订单
 					$data = array();
+					$field = array('id','orderid','email','productname','addtime','status','paymoney','number');
+					$where = array('isdelete'=>0);
+					$where1 = "status = 1 or status = 3";
+					$order = $this->m_order->Field($field)->Where($where)->Where($where1)->Order(array('id'=>'DESC'))->Select();
+					$data['order'] = $order;
 					$this->getView()->assign($data);
 				}
 			}
@@ -46,12 +57,17 @@ class IndexController extends AdminBasicController
 		$method = $this->getPost('method',false);
 		if($method AND $method=='updatecheck'){
 			if ($this->VerifyCsrfToken($csrf_token)) {
-				$up_version = $this->_getUpdateVersion();
+				$up_version = $this->getSession('up_version');
+				if(!$up_version){
+					$up_version = $this->_getUpdateVersion();
+					$this->setSession('up_version',$up_version);
+				}
 				if(version_compare(trim(VERSION), trim($up_version), '<' )){
-					$params = array('url'=>$this->github_url,'zip'=>"https://github.com/zlkbdotnet/zfaka/archive/{$up_version}.zip");
+					$params = array('update'=>1,'url'=>$this->github_url,'zip'=>"https://github.com/zlkbdotnet/zfaka/archive/{$up_version}.zip");
 					$data = array('code' => 1, 'msg' => '有更新','data'=>$params);
 				}else{
-					$data = array('code' => 1002, 'msg' => '没有更新');
+					$params = array('update'=>0,'url'=>$this->github_url,'remote_version'=>$this->remote_version);
+					$data = array('code' => 1, 'msg' => '没有更新','data'=>$params);
 				}
 			} else {
                 $data = array('code' => 1001, 'msg' => '页面超时，请刷新页面后重试!');
@@ -66,7 +82,7 @@ class IndexController extends AdminBasicController
 	{
 		$version = VERSION;
 		try{
-			$version_reg = '#<a href="/zlkbdotnet/zfaka/archive/(.*?).zip" rel="nofollow">#';//列表规则 
+			$version_reg = '#<a href="/zlkbdotnet/zfaka/archive/(.*?).zip"#';//列表规则 
 			$version_html= $this->_get_url_contents($this->github_url,array());
 			$version_html=mb_convert_encoding($version_html, 'utf-8', 'gbk');
 			preg_match_all($version_reg , $version_html , $cate_matches); 
@@ -74,6 +90,7 @@ class IndexController extends AdminBasicController
 				$up_version = trim($cate_matches[1][0]);
 				if(strlen($up_version)==5){
 					$version = $up_version;
+					$this->remote_version = $up_version;
 				}
 			}
 		} catch(\Exception $e) {

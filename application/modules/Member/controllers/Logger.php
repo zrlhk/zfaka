@@ -6,7 +6,7 @@
  * Date:20150902
  */
 
-class LoggerController extends PcBasicController
+class LoggerController extends MemberBasicController
 {
 	private $m_user_login_logs;
     public function init()

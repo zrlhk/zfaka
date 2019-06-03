@@ -17,6 +17,34 @@ layui.define(['layer', 'table', 'form','upload'], function(exports){
 			//console.log(res)
 		}
 	});
+	
+	form.on('select(typeid)', function(data){
+		if (data.value == 0) return;
+		$.ajax({
+			url: '/'+ADMIN_DIR+'/products/getlistbytid',
+			type: 'POST',
+			dataType: 'json',
+			data: {'tid': data.value,'csrf_token':TOKEN},
+			beforeSend: function () {
+			},
+			success: function (res) {
+				if (res.code == '1') {
+					var html = "";
+					var list = res.data.products;
+					for (var i = 0, j = list.length; i < j; i++) {
+						html += '<option value='+list[i].id+'>'+list[i].name+'</option>';
+					}
+					$('#productlist').html("<option value=\"0\">请选择</option>" + html);
+					form.render('select');
+				} else {
+					form.render('select');
+					layer.msg(res.msg,{icon:2,time:5000});
+				}
+			}
+
+		});
+	});
+	
 	//导入
 	form.on('submit(import)', function(data){
 		data.field.csrf_token = TOKEN;
@@ -70,6 +98,7 @@ layui.define(['layer', 'table', 'form','upload'], function(exports){
 		page: true,
 		cellMinWidth:60,
 		cols: [[
+			{type: 'checkbox', fixed: 'left'},
 			{field: 'id', title: 'ID', width:80},
 			{field: 'name', title: '商品名'},
 			{field: 'card', title: '卡密'},
@@ -79,7 +108,95 @@ layui.define(['layer', 'table', 'form','upload'], function(exports){
 		]]
 	});
 
+    $('#deleteALL').on('click',function () {
+        var checkStatus = table.checkStatus('table');
+        var data=checkStatus.data;
+		var ids=[];
+		for(var i in data){
+			ids.push(data[i].id);
+		}
+		if(ids.length>0){
+			layer.confirm('确认删除选中卡密吗？', function(index) {
+				var param = {'ids': ids};
+				$.ajax({
+					url: '/'+ADMIN_DIR+'/productscard/delete',//请求的url地址
+					dataType: 'json',//返回的格式为json
+					data: {'id': JSON.stringify(param),'csrf_token':TOKEN},//参数值
+					type: "POST"
+				})
+				.done(function (data) {
+				if (data.code == 1) {
+					layer.msg(data.msg, {icon: 1});
+					location.reload();
+				} else {
+					layer.msg(data.msg, {icon: 2});
+					}
+				})
+			})
+		}else{
+			layer.msg('请选中需要删除的卡密',{icon: 2});
+		}
+	});
+     $('#deleteempty').on('click',function () {
+		layer.confirm('确认清空所有已删除的卡密吗？', function(index) {
+			$.ajax({
+				url: '/'+ADMIN_DIR+'/productscard/deleteempty',//请求的url地址
+				dataType: 'json',//返回的格式为json
+				data: {'method': "empty",'csrf_token':TOKEN},//参数值
+				type: "POST"
+			})
+			.done(function (data) {
+			if (data.code == 1) {
+				layer.msg(data.msg, {icon: 1});
+				location.reload();
+			} else {
+				layer.msg(data.msg, {icon: 2});
+				}
+			})
+		})
+	}); 
+	
+    form.on('submit(repair)', function(data){
+		data.field.csrf_token = TOKEN;
+		data.field.method = 'repair';
+		var i = layer.load(2,{shade: [0.5,'#fff']});
+			$.ajax({
+				url: '/'+ADMIN_DIR+'/productscard/repairajax/',
+				type: 'POST',
+				dataType: 'json',
+				data: data.field,
+			})
+			.done(function(res) {
+				if (res.code == '1') {
+					layer.open({
+						type: 1
+						,title: '修复数据'
+						,offset: 'auto'
+						,id: 'layerPayone' //防止重复弹出
+						,content: '<div style="padding: 20px 100px;">'+res.msg+'</div>'
+						,btn: '关闭'
+						,btnAlign: 'c' //按钮居中
+						,shade: 0.8 //不显示遮罩
+						,yes: function(){
+							location.reload();
+						}
+						,cancel: function(){ 
+							location.reload();
+						} 
+					});
+				} else {
+					layer.msg(res.msg,{icon:2,time:5000});
+				}
+			})
+			.fail(function() {
+				layer.msg('服务器连接失败，请联系管理员',{icon:2,time:5000});
+			})
+			.always(function() {
+				layer.close(i);
+			});
 
+			return false; //阻止表单跳转。如果需要表单跳转，去掉这段即可。
+    });	
 	//添加
 	form.on('submit(add)', function(data){
 		data.field.csrf_token = TOKEN;

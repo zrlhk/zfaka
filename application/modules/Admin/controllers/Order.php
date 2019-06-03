@@ -26,7 +26,7 @@ class OrderController extends AdminBasicController
             return FALSE;
         }
 		$data = array();
-		$products=$this->m_products->Where(array('isdelete'=>0))->Order(array('id'=>'DESC'))->Select();
+		$products=$this->m_products->Where(array('isdelete'=>0))->Order(array('sort_num'=>'DESC'))->Select();
 		$data['products'] = $products;
 		$this->getView()->assign($data);
     }
@@ -61,7 +61,7 @@ class OrderController extends AdminBasicController
 		$limit = $this->get('limit');
 		$limit = is_numeric($limit) ? $limit : 10;
 		
-		$total=$this->m_order->Where($where1)->Where($where)->Total();
+		$total = $this->m_order->Where($where1)->Where($where)->Total();
 		
         if ($total > 0) {
             if ($page > 0 && $page < (ceil($total / $limit) + 1)) {
@@ -71,7 +71,8 @@ class OrderController extends AdminBasicController
             }
 			
             $limits = "{$pagenum},{$limit}";
-			$items=$this->m_order->Where($where1)->Where($where)->Limit($limits)->Order(array('id'=>'DESC'))->Select();
+			$field = array('id','orderid','email','productname','addtime','status','paymoney','number');
+			$items = $this->m_order->Field($field)->Where($where1)->Where($where)->Limit($limits)->Order(array('id'=>'DESC'))->Select();
 			
             if (empty($items)) {
                 $data = array('code'=>1002,'count'=>0,'data'=>array(),'msg'=>'无数据');
@@ -113,19 +114,34 @@ class OrderController extends AdminBasicController
             $data = array('code' => 1000, 'msg' => '请登录');
 			Helper::response($data);
         }
-		$id = $this->get('id');
+		$id = $this->get('id',false);
 		$csrf_token = $this->getPost('csrf_token', false);
-        if (FALSE != $id AND is_numeric($id) AND $id > 0) {
+        if ($csrf_token) {
 			if ($this->VerifyCsrfToken($csrf_token)) {
-				$where1 = array('id'=>$id);
-				$where = '(status=0 or status=2)';//已完成和未支付的才可以删
-				$delete = $this->m_order->Where($where1)->Where($where)->Update(array('isdelete'=>1));
-				if($delete){
-					$data = array('code' => 1, 'msg' => '删除成功', 'data' => '');
+				if($id AND is_numeric($id) AND $id>0){
+					$where1 = array('id'=>$id);
+					$where = '(status=0 or status=2)';//已完成和未支付的才可以删
+					$delete = $this->m_order->Where($where1)->Where($where)->Update(array('isdelete'=>1));
+					if($delete){
+						$data = array('code' => 1, 'msg' => '删除成功', 'data' => '');
+					}else{
+						$data = array('code' => 1003, 'msg' => '删除失败', 'data' => '');
+					}
 				}else{
-					$data = array('code' => 1003, 'msg' => '删除失败', 'data' => '');
-				}
-				
+					$ids = json_decode($id,true);
+					if(isset($ids['ids']) AND !empty($ids['ids'])){
+						$idss = implode(",",$ids['ids']);
+						$where = "(status=0 or status=2) and id in ({$idss})";
+						$delete = $this->m_order->Where($where)->Update(array('isdelete'=>1));
+						if($delete){
+							$data = array('code' => 1, 'msg' => '成功');
+						}else{
+							$data = array('code' => 1003, 'msg' => '删除失败');
+						}
+					}else{
+						$data = array('code' => 1000, 'msg' => '请选中需要删除的订单');
+					}
+				}	
 			} else {
                 $data = array('code' => 1002, 'msg' => '页面超时，请刷新页面后重试!');
             }
@@ -180,7 +196,7 @@ class OrderController extends AdminBasicController
 						$data = array('code' => 1, 'msg' => '订单已支付', 'data' => '');
 					}else{
 						//业务处理
-						$config = array('paymethod'=>'admin','tradeid'=>0,'paymoney'=>0,'orderid'=>$order['orderid'] );
+						$config = array('paymethod'=>'admin','tradeid'=>0,'paymoney'=>$order['money'],'orderid'=>$order['orderid'] );
 						$notify = new \Pay\notify();
 						$data = $notify->run($config);
 					}
